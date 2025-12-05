@@ -5,8 +5,8 @@ from app.core.config import settings
 
 
 class FalClient:
-    BASE_TTI = "https://fal.run/fal-ai/nano-banana"
-    BASE_EDIT = "https://fal.run/fal-ai/nano-banana/edit"
+    BASE_TTI = "https://fal.run/fal-ai/nano-banana-pro"
+    BASE_EDIT = "https://fal.run/fal-ai/nano-banana-pro/edit"
 
     @staticmethod
     def _headers() -> dict[str, str]:
@@ -60,6 +60,36 @@ class FalClient:
             "aspect_ratio": aspect_ratio,
             "output_format": output_format,
             "image_urls": [image_url],
+        }
+        if resolution:
+            payload["resolution"] = resolution
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.post(FalClient.BASE_EDIT, headers=FalClient._headers(), json=payload)
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=f"FAL error: {resp.text}")
+        data = resp.json()
+        images = data.get("images") or []
+        if not images:
+            raise HTTPException(status_code=500, detail="FAL не вернул изображение")
+        return images[0].get("url")
+
+    @staticmethod
+    async def compose_images(
+        prompt: str,
+        image_urls: list[str],
+        *,
+        aspect_ratio: str = "auto",
+        output_format: str = "png",
+        resolution: str | None = None,
+        num_images: int = 1,
+    ) -> str:
+        """Compose multiple images into one using FAL edit endpoint with multiple image_urls."""
+        payload = {
+            "prompt": prompt,
+            "num_images": num_images,
+            "aspect_ratio": aspect_ratio,
+            "output_format": output_format,
+            "image_urls": image_urls,  # Pass all image URLs
         }
         if resolution:
             payload["resolution"] = resolution

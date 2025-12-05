@@ -138,3 +138,37 @@ export const textToImage = async ({
   if (!fileUrl) throw new Error("Сервер не вернул ссылку на файл")
   return downloadFile(toAbsoluteUrl(fileUrl), `image-${Date.now()}`)
 }
+
+export const composeImage = async ({
+  files,
+  prompt,
+  aspect_ratio = "auto",
+  output_format = "png",
+  resolution = "1K",
+}: {
+  files: File[]
+  prompt: string
+  aspect_ratio?: string
+  output_format?: string
+  resolution?: string
+}) => {
+  const formData = new FormData()
+  // Append all files
+  for (const file of files) {
+    formData.append("files", file)
+  }
+  formData.append("prompt", prompt)
+  formData.append("aspect_ratio", aspect_ratio)
+  formData.append("output_format", output_format)
+  formData.append("resolution", resolution)
+
+  const response = await client.post("/api/v1/images/compose", formData, {
+    headers: {
+      ...authHeaders(),
+      "Content-Type": "multipart/form-data",
+    },
+  })
+  const fileUrl: string | undefined = response.data.file_url
+  if (!fileUrl) throw new Error("Сервер не вернул ссылку на файл")
+  return downloadFile(toAbsoluteUrl(fileUrl), `compose-${Date.now()}`)
+}

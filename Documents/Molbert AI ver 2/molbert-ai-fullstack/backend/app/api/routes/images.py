@@ -50,6 +50,18 @@ Guidelines:
 Return only the final adjusted image."""
 
 
+COMPOSE_TEMPLATE = """You are an expert photo compositor AI. Transform or compose the provided image based on the user's creative request.
+User Request: "{user_prompt}"
+
+Guidelines:
+- Creatively transform, remix, or compose the image as requested.
+- You may combine elements, change style, add artistic effects, or create variations.
+- Maintain high quality and coherent composition.
+- Be creative while respecting the user's intent.
+
+Return only the final composed image."""
+
+
 async def _validate_upload(file: UploadFile) -> bytes:
     """
     Ensure uploaded file is a small image of an allowed type.
@@ -176,6 +188,53 @@ async def adjust_image(
         }
     )
     _log_generation(session, current_user, "adjust", prompt, fal_url)
+    return ImageResult(image_data_url="", file_url=to_public_url(fal_url))
+
+
+@router.post("/compose", response_model=ImageResult)
+async def compose_image(
+    session: deps.SessionDep,
+    prompt: str = Form(...),
+    files: list[UploadFile] = File(...),
+    aspect_ratio: str = Form("auto"),
+    output_format: str = Form("png"),
+    resolution: str = Form("1K"),
+    current_user: User = Depends(deps.get_current_user),
+) -> ImageResult:
+    _ensure_credits_available(session, current_user)
+
+    if not files:
+        raise HTTPException(status_code=400, detail="Необходимо загрузить хотя бы одно изображение")
+
+    # Validate and store all files
+    stored_paths: list[str] = []
+    source_urls: list[str] = []
+
+    for file in files[:10]:  # Limit to 10 images
+        content = await _validate_upload(file)
+        stored_path = save_bytes(
+            content, file.content_type or "image/png", str(current_user.id), prefix="source"
+        )
+        stored_paths.append(stored_path)
+        source_urls.append(to_public_url(stored_path))
+        # Reset file position for potential re-read
+        await file.seek(0)
+
+    image_prompt = COMPOSE_TEMPLATE.format(user_prompt=prompt)
+
+    fal_url = await process_generation_task(
+        {
+            "mode": "compose",
+            "prompt": image_prompt,
+            "image_urls": source_urls,  # List of URLs for multiple images
+            "image_url": source_urls[0],  # Primary image for fallback
+            "image_path": stored_paths[0],
+            "aspect_ratio": aspect_ratio,
+            "output_format": output_format,
+            "resolution": resolution,
+        }
+    )
+    _log_generation(session, current_user, "compose", prompt, fal_url)
     return ImageResult(image_data_url="", file_url=to_public_url(fal_url))
 
 

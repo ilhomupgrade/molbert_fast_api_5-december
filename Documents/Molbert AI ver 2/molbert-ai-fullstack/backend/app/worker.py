@@ -136,6 +136,30 @@ async def handle_generation(payload: dict) -> dict:
                 output_format=payload.get("output_format", "png"),
                 resolution=payload.get("resolution"),
             )
+        elif mode == "compose":
+            # Handle multiple images for compose mode
+            image_urls = payload.get("image_urls", [])
+            public_urls: list[str] = []
+            for url in image_urls:
+                public_url = await _public_image_url(url, None)
+                if public_url:
+                    public_urls.append(public_url)
+            if not public_urls:
+                # Fallback to single image
+                image_url = await _public_image_url(
+                    payload.get("image_url"), payload.get("image_path")
+                )
+                if image_url:
+                    public_urls = [image_url]
+            if not public_urls:
+                raise HTTPException(status_code=400, detail="Нет изображений для compose")
+            fal_url = await FalClient.compose_images(
+                payload["prompt"],
+                public_urls,
+                aspect_ratio=payload.get("aspect_ratio", "auto"),
+                output_format=payload.get("output_format", "png"),
+                resolution=payload.get("resolution"),
+            )
         elif mode in {"edit", "filter", "adjust"}:
             image_url = await _public_image_url(
                 payload.get("image_url"), payload.get("image_path")
